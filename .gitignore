@@ -3,3 +3,4 @@ docviewer/local_settings.py
 *~
 docviewer/media/pictures
 *.pyc
+db
