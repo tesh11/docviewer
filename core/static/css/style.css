@@ -13,3 +13,7 @@
 body{
   padding-top: 60px;
 }
+
+#viewer {
+    height: 800px;
+}
