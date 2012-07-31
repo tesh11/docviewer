@@ -2,3 +2,4 @@ docviewer/local_settings.py
 .idea
 *~
 docviewer/media/pictures
+*.pyc
