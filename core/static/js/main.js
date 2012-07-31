@@ -79,8 +79,13 @@ $(function () {
         var self = this;
         $.getJSON($(this).attr('viewer'), function(result) {
             if (result && result.length) {
-                var session_id = result[0]['session_id'];
-                $('#viewer').attr('src', 'https://crocodoc.com/view/' + session_id);
+                var web_id = result[0]['uuid'];
+                var sig = result[0]['signature'];
+                var ts = result[0]['timestamp'];
+
+                var viewer = vuzit.Viewer.fromId(web_id, {signature: sig, timestamp: ts});
+                viewer.display(document.getElementById('viewer'), { zoom: 2 });
+
             }
         });
         event.stopPropagation();

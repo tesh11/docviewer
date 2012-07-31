@@ -1,3 +1,6 @@
+import base64
+import hashlib
+import hmac
 import httplib
 import urllib
 import urllib2
@@ -20,6 +23,13 @@ def response_mimetype(request):
     else:
         return "text/plain"
 
+def string_to_sign(method, ts, web_id=''):
+    web_id = '' if None else web_id
+    return "%s%s%s%d" % (method, web_id, settings.VUZIT_PUBLIC_KEY, ts)
+
+def sign_msg(msg):
+    return base64.b64encode(hmac.new(settings.VUZIT_PRIVATE_KEY, msg, hashlib.sha1).digest())
+
 class PictureCreateView(CreateView):
     model = Picture
 
@@ -27,22 +37,44 @@ class PictureCreateView(CreateView):
         self.object = form.save()
         f = self.request.FILES.get('file')
 
-        # upload to crocodoc
+        # upload to vuzit
         register_openers()
-        datagen, headers = multipart_encode({"file": open(settings.MEDIA_ROOT + "pictures/" + f.name.replace(" ", "_")), "token": settings.CROCODOC_API_KEY})
-        request = urllib2.Request("https://crocodoc.com/api/v2/document/upload", datagen, headers)
+
+        ts = int(time.time())
+        datagen, headers = multipart_encode({
+            "method": "create",
+            "upload": open(settings.MEDIA_ROOT + "pictures/" + f.name.replace(" ", "_")),
+            "secure": "1",
+            "download_document": "1",
+            "download_pdf": "1",
+            "key": settings.VUZIT_PUBLIC_KEY,
+            "signature": sign_msg(string_to_sign("create", ts)),
+            "timestamp": str(ts),
+        })
+        request = urllib2.Request("http://vuzit.com/documents.json", datagen, headers)
         response_json = urllib2.urlopen(request).read()
-        uuid = simplejson.loads(response_json)['uuid']
+        uuid = simplejson.loads(response_json)['document']['web_id']
         self.object.uuid = uuid
         self.object.save()
         print uuid
 
         # wait for the document to be processed
-        time.sleep(10)
+        time.sleep(30)
 
         # get the thumbnail
-        request = urllib2.Request("https://crocodoc.com/api/v2/download/thumbnail?token=%s&uuid=%s&size=300x300" % (settings.CROCODOC_API_KEY, uuid))
-        response_file = urllib2.urlopen(request)
+        ts = int(time.time())
+        params = {
+            't': 'thumb',
+            'key': settings.VUZIT_PUBLIC_KEY,
+            'signature': sign_msg(string_to_sign("show", ts, uuid)),
+            'timestamp': str(ts),
+        }
+        request = urllib2.Request("http://vuzit.com/documents/%s/pages/0.jpg?%s" % (uuid, urllib.urlencode(params)))
+        try:
+            response_file = urllib2.urlopen(request)
+        except Exception, e:
+            print e.fp.read()
+            raise e
         t = open(settings.MEDIA_ROOT + "pictures/" + uuid + "_thumbnail.png", "wb")
         t.write(response_file.read())
         t.close()
@@ -80,18 +112,12 @@ class PictureViewerView(BaseDetailView):
     def get(self, request, *args, **kwargs):
         self.object = self.get_object()
 
-        # create a viewing session and return the session id
-        data = urllib.urlencode({
-            'token': settings.CROCODOC_API_KEY,
+        ts = int(time.time())
+        retval = [{
             'uuid': self.object.uuid,
-            'downloadable': 'true'
-        })
-        request = urllib2.Request("https://crocodoc.com/api/v2/session/create", data)
-        response_json = urllib2.urlopen(request).read()
-        session_id = simplejson.loads(response_json)['session']
-        print session_id
-
-        retval = [{'session_id': session_id}]
+            'signature': urllib.quote_plus(sign_msg(string_to_sign("show", ts, self.object.uuid))),
+            'timestamp': str(ts),
+        }]
         response = JSONResponse(retval, {}, response_mimetype(self.request))
         response['Content-Disposition'] = 'inline; filename=files.json'
         return response
