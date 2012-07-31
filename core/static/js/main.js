@@ -84,6 +84,7 @@ $(function () {
                 var ts = result[0]['timestamp'];
 
                 var viewer = vuzit.Viewer.fromId(web_id, {signature: sig, timestamp: ts});
+                $('#viewer').html("");
                 viewer.display(document.getElementById('viewer'), { zoom: 2 });
 
             }
